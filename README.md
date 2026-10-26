@@ -2,7 +2,7 @@
 
 A small terminal UI for [smolvm](https://github.com/smol-machines/smolvm) microVMs. v0.1 talks to the `smolvm` binary on `PATH` (target CLI **v1.32.3**). It does not embed the hypervisor, open a socket of its own, or run `smolvm serve`.
 
-The interface uses the terminal's ANSI colors (named colors, bold, dim, reverse). It does not set RGB, so it follows the Omarchy / Hyprland terminal theme.
+The interface uses the terminal's ANSI palette only: the named colors (`Color::Black` through `Color::White`, including the bright variants), plus bold, dim, and reverse. It does not set RGB or a 256-color index. Omarchy themes recolor those palette entries in place, so the screen follows the theme on dark and light backgrounds.
 
 ## Install
 
@@ -67,6 +67,41 @@ packs_dir = "~/smolvm"
 - `packs_dir` is the directory `t`, `p`, and `y` use. Only direct `*.smolmachine` children with a safe file stem are listed. The path must not contain `..`.
 
 Creating a machine from the form stores the DNS and network values you submitted. A config file that does not parse is left untouched and the defaults are used for that session.
+
+## Networking and DNS (VPN users)
+
+`network` and `dns` are sent on create, throwaway, and copy (`--net --dns <dns>` when network is on). They exist because a microVM does not share the host's DNS path.
+
+VPN clients that block DNS leaks drop queries to any resolver except their own. The host can still resolve names, because systemd-resolved answers on `127.0.0.53` and forwards through the tunnel. That address is the host's loopback stub. A VM cannot reach it, and a public resolver such as `1.1.1.1` or `8.8.8.8` is exactly what leak protection rejects. The VM has to be told the VPN's own DNS address.
+
+This is not specific to one provider. It shows up with Mullvad, ProtonVPN, and IVPN, and with similar clients such as NordVPN and Windscribe when their leak protection is on. The address differs per client and sometimes per server. Look it up on the tunnel interface rather than hard-coding a guess:
+
+```bash
+resolvectl dns wg0-mullvad
+# Link 12 (wg0-mullvad): 100.64.0.7
+```
+
+Use whichever interface the VPN created (`resolvectl dns` with no argument lists them). Then put that address in the config:
+
+```toml
+# ~/.config/smoltop/config.toml
+dns = "100.64.0.7"
+network = true
+```
+
+`100.64.0.7` is Mullvad's resolver on `wg0-mullvad`, and it is smoltop's default because that is the address this machine needs. Point `dns` at a different resolver when the VPN is a different one. The create form writes the value you submit back to this file. Turning `network` off omits both flags; it does not rewrite a pack to be offline, because smolvm ORs `--net` with the pack's own network bit.
+
+## Theme changes
+
+Omarchy switches themes by updating the current theme and reloading terminal configs. Alacritty, Ghostty, and Kitty then swap the ANSI palette on the live screen. smoltop's colors are palette indexes, so they pick up that swap. To cover terminals that only recolor newly drawn cells, smoltop also polls the theme path on each tick (a `stat` of the symlink target, inode, and mtime) and, when it changes, clears the terminal and redraws. Focus gained and resize do the same full redraw.
+
+Checked against [basecamp/omarchy](https://github.com/basecamp/omarchy): `bin/omarchy-theme-set` replaces `$HOME/.local/state/omarchy/current/theme` (it is a directory, `rm` then `mv`, not a symlink in current Omarchy). `migrations/1781043107.sh` moved the older `$HOME/.config/omarchy/current` tree — whose `theme` entry was a symlink — to `~/.local/state/omarchy/current`. smoltop watches both of those paths. If neither exists, or `HOME` is unset, the watch is skipped and the TUI still runs.
+
+Override the path when the layout is different. A missing file is fine; `..` is not.
+
+```toml
+theme_path = "~/.local/state/omarchy/current/theme"
+```
 
 ## What smoltop will not pass
 

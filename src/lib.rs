@@ -14,6 +14,7 @@ pub mod names;
 pub mod packs;
 pub mod parse;
 pub mod runner;
+pub mod theme;
 pub mod ui;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

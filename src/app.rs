@@ -15,6 +15,19 @@ use crate::parse::{LiveStats, Machine};
 
 pub const POLL_INTERVAL: Duration = Duration::from_millis(1500);
 
+/// How the status line is painted. ANSI named colors only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StatusTone {
+    /// Machine count and other quiet notes.
+    Info,
+    /// A smolvm call is in flight, or the first list has not returned.
+    Busy,
+    /// The last action finished.
+    Ok,
+    /// The last action or check failed.
+    Error,
+}
+
 #[derive(Debug)]
 pub enum Effect {
     Job(Job),
@@ -125,6 +138,8 @@ pub struct App {
     pub selected: usize,
     pub mode: Mode,
     pub status: String,
+    /// `true` when `status` is a failure. Success, progress, and the machine
+    /// count are distinguished by [`App::status_tone`].
     pub status_error: bool,
     pub live: Option<LiveStats>,
     pub stats_message: String,
@@ -187,6 +202,19 @@ impl App {
 
     pub fn is_busy(&self) -> bool {
         self.list_inflight || self.stats_inflight || self.action_inflight
+    }
+
+    pub fn status_tone(&self) -> StatusTone {
+        if self.status_error {
+            return StatusTone::Error;
+        }
+        if self.status == "busy" || self.status.ends_with('…') {
+            return StatusTone::Busy;
+        }
+        if self.status_from_list {
+            return StatusTone::Info;
+        }
+        StatusTone::Ok
     }
 
     pub fn selected_machine(&self) -> Option<&Machine> {
@@ -329,7 +357,7 @@ impl App {
             }
             'r' => {
                 if self.action_inflight {
-                    self.set_status("busy", true, false);
+                    self.set_status("busy", false, false);
                     Vec::new()
                 } else {
                     self.force_list()
@@ -583,7 +611,7 @@ impl App {
             return Vec::new();
         }
         if self.action_inflight {
-            self.set_status("busy", true, false);
+            self.set_status("busy", false, false);
             return Vec::new();
         }
         match commands::shell_args(&name) {
@@ -690,7 +718,7 @@ impl App {
 
     fn submit_create(&mut self, request: CreateRequest, save: bool) -> Vec<Effect> {
         if self.action_inflight {
-            self.set_status("busy", true, false);
+            self.set_status("busy", false, false);
             return Vec::new();
         }
         if self
@@ -750,7 +778,7 @@ impl App {
         copy_dest: Option<String>,
     ) -> Vec<Effect> {
         if self.action_inflight {
-            self.set_status("busy", true, false);
+            self.set_status("busy", false, false);
             return Vec::new();
         }
         if let Some(parent) = stub.parent() {
@@ -832,7 +860,7 @@ impl App {
 
     fn begin_action(&mut self, id: ActionId, args: Vec<String>, status: String) -> Vec<Effect> {
         if self.action_inflight {
-            self.set_status("busy", true, false);
+            self.set_status("busy", false, false);
             return Vec::new();
         }
         self.action_inflight = true;
@@ -1417,6 +1445,21 @@ mod tests {
                 "100.64.0.7",
             ]
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn status_tone_separates_progress_success_and_errors() {
+        let (mut app, dir) = fixture("tone");
+        assert_eq!(app.status_tone(), StatusTone::Busy);
+        app.set_status("2 machine(s)", false, true);
+        assert_eq!(app.status_tone(), StatusTone::Info);
+        app.set_status("started web", false, false);
+        assert_eq!(app.status_tone(), StatusTone::Ok);
+        app.set_status("starting web…", false, false);
+        assert_eq!(app.status_tone(), StatusTone::Busy);
+        app.set_status("nope", true, false);
+        assert_eq!(app.status_tone(), StatusTone::Error);
         let _ = fs::remove_dir_all(dir);
     }
 
