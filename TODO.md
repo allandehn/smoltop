@@ -11,7 +11,9 @@
 ## Next up
 
 - Test against a real smolvm 1.32.3 and a real Omarchy theme switch.
-- First release v0.1.0 via `scripts/release.sh` (dry run first).
+- First release v0.1.0. `scripts/release.sh` never pushes `main`.
+  - On up-to-date main: `scripts/release.sh 0.1.0 --dry-run`, then `scripts/release.sh 0.1.0`. That pushes branch `release/0.1.0` (Cargo.toml and Cargo.lock only) for a pull request.
+  - After that pull request is merged, on up-to-date main: `scripts/release.sh 0.1.0 --publish --dry-run`, then `scripts/release.sh 0.1.0 --publish`. Publish builds the x86_64 Linux tarball and `.sha256`, tags `v0.1.0`, pushes only the tag, and attaches both files to the GitHub release.
 
 ## Ideas
 

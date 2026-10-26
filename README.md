@@ -6,12 +6,27 @@ The interface uses the terminal's ANSI palette only: the named colors (`Color::B
 
 ## Install
 
-`smolvm` 1.32.3 must already be on `PATH`. Then, from this repo:
+smoltop is one binary. `smolvm` 1.32.3 still has to be installed separately and on `PATH`. The installer below is for x86_64 Linux, checks the release checksum, and copies the binary to `~/.local/bin` without sudo (`SMOLTOP_INSTALL_DIR` overrides that directory).
 
 ```bash
-cargo install --path .
-smoltop
+curl -fsSL https://raw.githubusercontent.com/allandehn/smoltop/main/install.sh | bash
 ```
+
+To read the script before it runs:
+
+```bash
+curl -fsSL -o install.sh https://raw.githubusercontent.com/allandehn/smoltop/main/install.sh
+less install.sh
+bash install.sh
+```
+
+`SMOLTOP_VERSION=X.Y.Z` pins a release instead of the latest. With a Rust toolchain, this also works:
+
+```bash
+cargo install --git https://github.com/allandehn/smoltop.git
+```
+
+From a checkout of this repo: `cargo install --path .`
 
 During development:
 
