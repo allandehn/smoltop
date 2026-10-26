@@ -21,5 +21,5 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: cargo test
         run: cargo test --locked
-      - name: release script syntax
-        run: bash -n scripts/release.sh
+      - name: release and install script syntax
+        run: bash -n scripts/release.sh && bash -n install.sh
