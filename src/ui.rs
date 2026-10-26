@@ -45,19 +45,19 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn draw_header(frame: &mut Frame, area: Rect) {
-    let line = Line::from(vec![
+    let mut spans = vec![
         Span::styled(
             format!(" smoltop {VERSION}"),
             Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
         ),
         Span::styled("   ", Style::default()),
-        key_span("?"),
-        label_span("help"),
-        key_span("q"),
-        label_span("quit"),
-        key_span("r"),
-        label_span("refresh"),
-    ]);
+    ];
+    spans.extend(hint_spans(&[
+        ("?", "help"),
+        ("q", "quit"),
+        ("r", "refresh"),
+    ]));
+    let line = Line::from(spans);
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -161,16 +161,12 @@ fn draw_detail(frame: &mut Frame, app: &App, area: Rect) {
 
 fn detail_lines(app: &App) -> Vec<Line<'static>> {
     let Some(machine) = app.selected_machine() else {
-        return vec![Line::from(vec![
-            Span::styled(
-                "No machines.  ",
-                Style::default().add_modifier(Modifier::DIM),
-            ),
-            key_span("c"),
-            label_span("create"),
-            key_span("t"),
-            label_span("throwaway"),
-        ])];
+        let mut spans = vec![Span::styled(
+            "No machines.  ",
+            Style::default().add_modifier(Modifier::DIM),
+        )];
+        spans.extend(hint_spans(&[("c", "create"), ("t", "throwaway")]));
+        return vec![Line::from(spans)];
     };
     let (stats, stats_style) = match &app.live {
         Some(live) => (
@@ -206,7 +202,7 @@ fn detail_lines(app: &App) -> Vec<Line<'static>> {
 
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let mut keys = vec![Span::raw(" ")];
-    for (key, label) in [
+    keys.extend(hint_spans(&[
         ("j/k", "move"),
         ("enter", "shell"),
         ("s", "start"),
@@ -216,10 +212,7 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         ("t", "throwaway"),
         ("p", "pack"),
         ("y", "copy"),
-    ] {
-        keys.push(key_span(key));
-        keys.push(label_span(label));
-    }
+    ]));
     let paragraph = Paragraph::new(vec![
         Line::from(keys),
         Line::styled(format!(" {}", app.status), tone_style(app.status_tone())),
@@ -332,14 +325,11 @@ fn delete_lines(prompt: &DeletePrompt) -> Vec<Line<'static>> {
             ),
             Span::raw(" and its disks? This cannot be undone."),
         ]),
-        Line::from(vec![
-            key_span("y"),
-            Span::styled("delete    ", Style::default().fg(Color::Red)),
-            key_span("n"),
-            label_span("or"),
-            key_span("esc"),
-            label_span("cancel"),
-        ]),
+        Line::from(hint_spans(&[
+            ("y", "delete"),
+            ("n", "cancel"),
+            ("esc", "cancel"),
+        ])),
     ]
 }
 
@@ -397,15 +387,13 @@ fn create_lines(form: &CreateForm) -> Vec<Line<'static>> {
     ));
     lines.push(field("dns", &form.dns, form.focus == CreateFocus::Dns));
     lines.push(Line::styled(
-        "tab field   left/right change source or network   space toggles",
+        "tab field · left/right change source or network · space toggles",
         Style::default().add_modifier(Modifier::DIM),
     ));
-    lines.push(Line::from(vec![
-        key_span("enter"),
-        label_span("create"),
-        key_span("esc"),
-        label_span("cancel"),
-    ]));
+    lines.push(Line::from(hint_spans(&[
+        ("enter", "create"),
+        ("esc", "cancel"),
+    ])));
     if let Some(error) = &form.error {
         lines.push(Line::styled(
             error.clone(),
@@ -419,12 +407,7 @@ fn throwaway_lines(prompt: &ThrowawayPrompt) -> Vec<Line<'static>> {
     let mut lines = vec![
         Line::from(prompt.dir.display().to_string()),
         Line::from("enter creates tmp-N with the configured network and dns"),
-        Line::from(vec![
-            key_span("j/k"),
-            label_span("select"),
-            key_span("esc"),
-            label_span("cancel"),
-        ]),
+        Line::from(hint_spans(&[("j/k", "select"), ("esc", "cancel")])),
     ];
     for (index, pack) in prompt.packs.iter().take(8).enumerate() {
         let marker = if index == prompt.index { ">" } else { " " };
@@ -450,14 +433,11 @@ fn pack_lines(prompt: &PackPrompt) -> Vec<Line<'static>> {
             format!("sidecar {}", sidecar.display()),
             Style::default().add_modifier(Modifier::DIM),
         ),
-        Line::from(vec![
-            key_span("y"),
-            label_span("pack"),
-            key_span("n"),
-            label_span("or"),
-            key_span("esc"),
-            label_span("cancel"),
-        ]),
+        Line::from(hint_spans(&[
+            ("y", "pack"),
+            ("n", "cancel"),
+            ("esc", "cancel"),
+        ])),
     ]
 }
 
@@ -472,12 +452,7 @@ fn copy_lines(form: &CopyForm) -> Vec<Line<'static>> {
             Style::default().add_modifier(Modifier::DIM),
         ),
         field("name", &form.name, true),
-        Line::from(vec![
-            key_span("enter"),
-            label_span("copy"),
-            key_span("esc"),
-            label_span("cancel"),
-        ]),
+        Line::from(hint_spans(&[("enter", "copy"), ("esc", "cancel")])),
     ];
     if let Some(error) = &form.error {
         lines.push(Line::styled(
@@ -562,9 +537,25 @@ fn key_span(key: &str) -> Span<'static> {
 
 fn label_span(label: &str) -> Span<'static> {
     Span::styled(
-        format!(" {label}  "),
+        format!(" {label}"),
         Style::default().add_modifier(Modifier::DIM),
     )
+}
+
+/// `s start · x stop · d delete`. The separator is a dim middle dot.
+fn hint_spans(items: &[(&str, &str)]) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    for (index, (key, label)) in items.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled(
+                " \u{00b7} ",
+                Style::default().add_modifier(Modifier::DIM),
+            ));
+        }
+        spans.push(key_span(key));
+        spans.push(label_span(label));
+    }
+    spans
 }
 
 fn centered(area: Rect, width: u16, height: u16) -> Rect {
@@ -650,6 +641,28 @@ mod tests {
         assert!(text.contains("created"), "{text}");
         assert!(text.contains("DEMO: start refused"), "{text}");
         assert!(text.contains('╭'), "rounded panel missing:\n{text}");
+        assert!(
+            text.contains("? help · q quit · r refresh"),
+            "header hints:\n{text}"
+        );
+        assert!(
+            text.contains("s start · x stop · d delete"),
+            "footer hints:\n{text}"
+        );
+        let mut dot_is_dim = false;
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                let cell = &buf[(x, y)];
+                if cell.symbol() == "\u{00b7}" {
+                    assert!(
+                        cell.modifier.contains(Modifier::DIM),
+                        "middle dot is not dim"
+                    );
+                    dot_is_dim = true;
+                }
+            }
+        }
+        assert!(dot_is_dim, "no middle-dot separators");
 
         let mut saw_reversed = false;
         let mut saw_green = false;
