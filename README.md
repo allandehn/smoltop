@@ -34,7 +34,7 @@ cargo run
 | `c` | Create. Form fields: name, image **or** a `.smolmachine` pack, network, DNS |
 | `t` | Throwaway from a pack in the packs directory. Name is `tmp-1`, `tmp-2`, … |
 | `p` | Pack a **stopped** machine: `smolvm pack create --from-vm NAME -o <packs dir>/NAME` (sidecar is `<name>.smolmachine`) |
-| `y` | Copy a stopped machine: pack it, then `machine create --from` that sidecar. The copy does not add `--net` / `--dns`; the pack's own network bit is kept |
+| `y` | Copy a stopped machine: pack it, then `machine create --from` that sidecar. When network is enabled, the copy passes `--net` and `--dns` from the config, same as create and throwaway |
 | `r` | Refresh now |
 | `?` | Help |
 | `q` | Quit |
@@ -63,7 +63,7 @@ network = true
 packs_dir = "~/smolvm"
 ```
 
-- `network = true` sends `--net` and `--dns <dns>` on create and on throwaway. `--dns` implies networking in smolvm; smoltop sends both. On `machine create --from`, smolvm ORs `--net` with the pack's own network bit, so turning the switch off omits the flags rather than forcing a pack offline.
+- `network = true` sends `--net` and `--dns <dns>` on create, throwaway, and copy. `--dns` implies networking in smolvm; smoltop sends both. On `machine create --from`, smolvm ORs `--net` with the pack's own network bit, so turning the switch off omits the flags rather than forcing a pack offline. The default DNS `100.64.0.7` is what the host needs for a VM to resolve names.
 - `packs_dir` is the directory `t`, `p`, and `y` use. Only direct `*.smolmachine` children with a safe file stem are listed. The path must not contain `..`.
 
 Creating a machine from the form stores the DNS and network values you submitted. A config file that does not parse is left untouched and the defaults are used for that session.

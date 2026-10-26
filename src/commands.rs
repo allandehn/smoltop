@@ -402,6 +402,47 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
+    /// Copy is `machine create --from` with the same network flags as create
+    /// and throwaway: `--net --dns <config dns>` when network is enabled.
+    #[test]
+    fn copy_from_pack_passes_configured_net_and_dns() {
+        let dir = temp_dir("copy-net");
+        let pack = pack_file(&dir, "web");
+        let args = create_args(&CreateRequest {
+            name: "web-copy".into(),
+            source: CreateSource::Pack(pack.clone()),
+            network: true,
+            dns: "100.64.0.7".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--error-format".to_string(),
+                "json".into(),
+                "machine".into(),
+                "create".into(),
+                "--name".into(),
+                "web-copy".into(),
+                "--from".into(),
+                pack.to_str().unwrap().to_string(),
+                "--net".into(),
+                "--dns".into(),
+                "100.64.0.7".into(),
+            ]
+        );
+
+        let offline = create_args(&CreateRequest {
+            name: "web-copy".into(),
+            source: CreateSource::Pack(pack),
+            network: false,
+            dns: "100.64.0.7".into(),
+        })
+        .unwrap();
+        assert!(!offline.iter().any(|arg| arg == "--net" || arg == "--dns"));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn builders_reject_bad_names_and_paths() {
         assert!(start_args("-web").is_err());

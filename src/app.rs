@@ -796,7 +796,7 @@ impl App {
                 let request = CreateRequest {
                     name: dest.clone(),
                     source: CreateSource::Pack(sidecar),
-                    network: false,
+                    network: self.config.network,
                     dns: self.config.dns.clone(),
                 };
                 match commands::create_args(&request) {
@@ -1378,8 +1378,10 @@ mod tests {
     }
 
     #[test]
-    fn copy_packs_then_creates_without_network_flags() {
+    fn copy_packs_then_creates_with_configured_net_and_dns() {
         let (mut app, dir) = fixture("copy");
+        app.config.network = true;
+        app.config.dns = "100.64.0.7".into();
         app.machines = vec![machine("web", "stopped")];
         assert!(app.on_key(key('y')).is_empty());
         assert!(matches!(app.mode, Mode::Copy(_)));
@@ -1398,17 +1400,23 @@ mod tests {
         app.action_inflight = true;
         let effects = app.apply(Outcome::Action { id, result: Ok(()) });
         let args = action_args(&effects);
+        let pack = dir.join("web.smolmachine");
         assert_eq!(
             args,
-            commands::create_args(&CreateRequest {
-                name: "web-copy".into(),
-                source: CreateSource::Pack(dir.join("web.smolmachine")),
-                network: false,
-                dns: app.config.dns.clone(),
-            })
-            .unwrap()
+            &[
+                "--error-format",
+                "json",
+                "machine",
+                "create",
+                "--name",
+                "web-copy",
+                "--from",
+                pack.to_str().unwrap(),
+                "--net",
+                "--dns",
+                "100.64.0.7",
+            ]
         );
-        assert!(!args.iter().any(|arg| arg == "--net" || arg == "--dns"));
         let _ = fs::remove_dir_all(dir);
     }
 
