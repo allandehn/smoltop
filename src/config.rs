@@ -33,6 +33,10 @@ pub struct Config {
     pub network: bool,
     #[serde(default = "default_packs_dir")]
     pub packs_dir: String,
+    /// Omarchy theme file or directory to watch. Unset watches the current
+    /// and legacy Omarchy paths. Missing paths are ignored at runtime.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme_path: Option<String>,
 }
 
 impl Default for Config {
@@ -41,6 +45,7 @@ impl Default for Config {
             dns: default_dns(),
             network: default_network(),
             packs_dir: default_packs_dir(),
+            theme_path: None,
         }
     }
 }
@@ -75,6 +80,13 @@ pub fn load_config(path: &Path) -> Result<Config, String> {
     let config: Config = toml::from_str(&text)
         .map_err(|error| format!("cannot parse {}: {error}", path.display()))?;
     validate_dns(&config.dns)?;
+    if let Some(theme_path) = &config.theme_path {
+        crate::theme::resolve_theme_path(
+            theme_path,
+            std::env::var("HOME").ok().as_deref(),
+            &std::env::current_dir().map_err(|error| error.to_string())?,
+        )?;
+    }
     resolve_packs_dir(
         &config.packs_dir,
         std::env::var("HOME").ok().as_deref(),
@@ -94,6 +106,7 @@ pub fn save_config(path: &Path, config: &Config) -> Result<(), String> {
         "# smoltop configuration\n\
          # dns is passed as --dns when network is true.\n\
          # packs_dir is scanned for *.smolmachine files.\n\
+         # theme_path optionally overrides the Omarchy theme watch.\n\
          {body}"
     );
     std::fs::write(path, text).map_err(|error| format!("cannot write {}: {error}", path.display()))
@@ -212,5 +225,17 @@ mod tests {
             PathBuf::from("/work/packs")
         );
         assert!(expand_tilde("~/smolvm", None).is_err());
+    }
+
+    #[test]
+    fn theme_path_may_be_missing_but_not_a_parent_dir() {
+        let dir = temp_dir("theme");
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "theme_path = \"/no/such/omarchy/theme\"\n").unwrap();
+        let config = load_config(&path).unwrap();
+        assert_eq!(config.theme_path.as_deref(), Some("/no/such/omarchy/theme"));
+        std::fs::write(&path, "theme_path = \"../secret\"\n").unwrap();
+        assert!(load_config(&path).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

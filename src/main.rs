@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use crossterm::cursor::{Hide, Show};
-use crossterm::event::{self, Event};
+use crossterm::event::{self, DisableFocusChange, EnableFocusChange, Event};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -22,6 +22,7 @@ use smoltop::app::{App, Effect, Job, Outcome};
 use smoltop::config::{self, load_config};
 use smoltop::dispatch;
 use smoltop::runner::{SmolvmRunner, SystemRunner};
+use smoltop::theme::ThemeWatch;
 use smoltop::ui;
 
 fn main() -> ExitCode {
@@ -47,11 +48,13 @@ fn run() -> Result<(), String> {
 
     let mut stdout = io::stdout();
     enable_raw_mode().map_err(|error| error.to_string())?;
-    if let Err(error) = execute!(stdout, EnterAlternateScreen, Hide) {
+    if let Err(error) = execute!(stdout, EnterAlternateScreen, Hide, EnableFocusChange) {
         let _ = disable_raw_mode();
         return Err(error.to_string());
     }
     let _restore = Restore;
+
+    let mut theme_watch = theme_watch_for(&app);
 
     let mut terminal =
         Terminal::new(CrosstermBackend::new(stdout)).map_err(|error| error.to_string())?;
@@ -82,11 +85,17 @@ fn run() -> Result<(), String> {
         }
 
         if event::poll(Duration::from_millis(100)).map_err(|error| error.to_string())? {
-            if let Event::Key(key) = event::read().map_err(|error| error.to_string())? {
-                let effects = app.on_key(key);
-                if apply_effects(&mut app, effects, &job_tx, &outcome_rx, &mut terminal)? {
-                    return Ok(());
+            match event::read().map_err(|error| error.to_string())? {
+                Event::Key(key) => {
+                    let effects = app.on_key(key);
+                    if apply_effects(&mut app, effects, &job_tx, &outcome_rx, &mut terminal)? {
+                        return Ok(());
+                    }
                 }
+                Event::Resize(_, _) | Event::FocusGained => {
+                    redraw_full(&mut terminal, &app)?;
+                }
+                Event::FocusLost | Event::Mouse(_) | Event::Paste(_) => {}
             }
         }
 
@@ -94,7 +103,27 @@ fn run() -> Result<(), String> {
         if apply_effects(&mut app, effects, &job_tx, &outcome_rx, &mut terminal)? {
             return Ok(());
         }
+        if theme_watch.poll() {
+            redraw_full(&mut terminal, &app)?;
+        }
     }
+}
+
+fn theme_watch_for(app: &App) -> ThemeWatch {
+    let home = std::env::var("HOME").ok();
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    match smoltop::theme::watch_paths(app.config.theme_path.as_deref(), home.as_deref(), &cwd) {
+        Ok(paths) => ThemeWatch::new(paths),
+        Err(_) => ThemeWatch::new(Vec::new()),
+    }
+}
+
+fn redraw_full(terminal: &mut Terminal<CrosstermBackend<Stdout>>, app: &App) -> Result<(), String> {
+    terminal.clear().map_err(|error| error.to_string())?;
+    terminal
+        .draw(|frame| ui::draw(frame, app))
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn apply_effects(
@@ -159,11 +188,13 @@ fn wait_until_idle(
 fn suspend_for_shell(args: &[String]) -> Result<i32, String> {
     disable_raw_mode().map_err(|error| error.to_string())?;
     let mut output = io::stdout();
-    execute!(output, Show, LeaveAlternateScreen).map_err(|error| error.to_string())?;
+    execute!(output, Show, LeaveAlternateScreen, DisableFocusChange)
+        .map_err(|error| error.to_string())?;
     let _ = output.flush();
     let result = SystemRunner::new().run_inherited(args);
     enable_raw_mode().map_err(|error| error.to_string())?;
-    execute!(output, EnterAlternateScreen, Hide).map_err(|error| error.to_string())?;
+    execute!(output, EnterAlternateScreen, Hide, EnableFocusChange)
+        .map_err(|error| error.to_string())?;
     result
 }
 
@@ -173,6 +204,6 @@ impl Drop for Restore {
     fn drop(&mut self) {
         let mut output = io::stdout();
         let _ = disable_raw_mode();
-        let _ = execute!(output, Show, LeaveAlternateScreen);
+        let _ = execute!(output, Show, LeaveAlternateScreen, DisableFocusChange);
     }
 }
